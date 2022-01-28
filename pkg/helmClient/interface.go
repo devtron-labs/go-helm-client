@@ -12,4 +12,5 @@ type Client interface {
 	GetRelease(name string) (*release.Release, error)
 	ListReleaseHistory(name string, max int) ([]*release.Release, error)
 	ListAllReleases() ([]*release.Release, error)
+	UninstallReleaseByName(name string) error
 }

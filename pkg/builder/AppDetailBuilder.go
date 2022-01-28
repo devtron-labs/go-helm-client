@@ -336,6 +336,35 @@ func GetDesiredManifest(req *client.ObjectRequest) (*client.DesiredManifestRespo
 	return desiredManifestResponse, nil
 }
 
+func UninstallRelease(releaseIdentifier *client.ReleaseIdentifier) (*client.UninstallReleaseResponse, error) {
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClient, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	err = helmClient.UninstallReleaseByName(releaseIdentifier.ReleaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	uninstallReleaseResponse := &client.UninstallReleaseResponse{
+		Success: true,
+	}
+
+	return uninstallReleaseResponse, nil
+}
+
 
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)

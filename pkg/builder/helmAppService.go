@@ -86,6 +86,11 @@ func (impl *ApplicationServiceServerImpl) GetDesiredManifest(ctx context.Context
 	return GetDesiredManifest(in)
 }
 
+func (impl *ApplicationServiceServerImpl) UninstallRelease(ctx context.Context, in *client.ReleaseIdentifier) (*client.UninstallReleaseResponse, error) {
+	impl.logger.Infow("uninstall release request")
+	return UninstallRelease(in)
+}
+
 func resourceRefResult(resourceRefs []*bean.ResourceRef) (resourceRefResults []*client.ResourceRef) {
 	for _, resourceRef := range resourceRefs {
 		resourceRefResult := &client.ResourceRef{

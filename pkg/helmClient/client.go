@@ -123,9 +123,16 @@ func (c *HelmClient) ListReleaseHistory(name string, max int) ([]*release.Releas
 
 	return client.Run(name)
 }
+
 func (c *HelmClient) ListAllReleases() ([]*release.Release, error) {
 	return c.listAllReleases()
 }
+
+// UninstallReleaseByName uninstalls a release identified by the provided 'name'.
+func (c *HelmClient) UninstallReleaseByName(name string) error {
+	return c.uninstallReleaseByName(name)
+}
+
 
 // listDeployedReleases lists all deployed helm releases.
 func (c *HelmClient) listDeployedReleases() ([]*release.Release, error) {
@@ -149,4 +156,16 @@ func (c *HelmClient) listAllReleases() ([]*release.Release, error) {
 	listClient.AllNamespaces = true
 	listClient.All = true
 	return listClient.Run()
+}
+
+// uninstallReleaseByName uninstalls a release identified by the provided 'name'.
+func (c *HelmClient) uninstallReleaseByName(name string) error {
+	client := action.NewUninstall(c.ActionConfig)
+
+	_, err := client.Run(name)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
