@@ -366,6 +366,48 @@ func UninstallRelease(releaseIdentifier *client.ReleaseIdentifier) (*client.Unin
 }
 
 
+func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	releaseIdentifier := request.ReleaseIdentifier
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClientObj, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	helmRelease, err := getHelmRelease(releaseIdentifier.ClusterConfig, releaseIdentifier.ReleaseNamespace, releaseIdentifier.ReleaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	updateChartSpec := &helmClient.ChartSpec {
+		ReleaseName: releaseIdentifier.ReleaseName,
+		Namespace: releaseIdentifier.ReleaseNamespace,
+		ValuesYaml: request.ValuesYaml,
+	}
+
+	_, err = helmClientObj.UpgradeRelease(context.Background(), helmRelease.Chart, updateChartSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	upgradeReleaseResponse := &client.UpgradeReleaseResponse{
+		Success: true,
+	}
+
+	return upgradeReleaseResponse, nil
+}
+
+
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
 	if err != nil {

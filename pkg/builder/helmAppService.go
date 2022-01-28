@@ -91,6 +91,11 @@ func (impl *ApplicationServiceServerImpl) UninstallRelease(ctx context.Context, 
 	return UninstallRelease(in)
 }
 
+func (impl *ApplicationServiceServerImpl) UpgradeRelease(ctx context.Context, in *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	impl.logger.Infow("upgrade release request")
+	return UpgradeRelease(in)
+}
+
 func resourceRefResult(resourceRefs []*bean.ResourceRef) (resourceRefResults []*client.ResourceRef) {
 	for _, resourceRef := range resourceRefs {
 		resourceRefResult := &client.ResourceRef{
