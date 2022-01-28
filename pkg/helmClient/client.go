@@ -202,14 +202,12 @@ func (c *HelmClient) upgrade(ctx context.Context, helmChart *chart.Chart, update
 		return nil, err
 	}
 
-	rel, err := client.RunWithContext(ctx, updatedChartSpec.ReleaseName, helmChart, values)
+	release, err := client.RunWithContext(ctx, updatedChartSpec.ReleaseName, helmChart, values)
 	if err != nil {
-		return rel, err
+		return nil, err
 	}
 
-	c.DebugLog("release upgraded successfully: %s/%s-%s", rel.Name, rel.Chart.Metadata.Name, rel.Chart.Metadata.Version)
-
-	return rel, nil
+	return release, nil
 }
 
 // mergeUpgradeOptions merges values of the provided chart to helm upgrade options used by the client.
