@@ -336,6 +336,77 @@ func GetDesiredManifest(req *client.ObjectRequest) (*client.DesiredManifestRespo
 	return desiredManifestResponse, nil
 }
 
+func UninstallRelease(releaseIdentifier *client.ReleaseIdentifier) (*client.UninstallReleaseResponse, error) {
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClient, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	err = helmClient.UninstallReleaseByName(releaseIdentifier.ReleaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	uninstallReleaseResponse := &client.UninstallReleaseResponse{
+		Success: true,
+	}
+
+	return uninstallReleaseResponse, nil
+}
+
+
+func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	releaseIdentifier := request.ReleaseIdentifier
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClientObj, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	helmRelease, err := getHelmRelease(releaseIdentifier.ClusterConfig, releaseIdentifier.ReleaseNamespace, releaseIdentifier.ReleaseName)
+	if err != nil {
+		return nil, err
+	}
+
+	updateChartSpec := &helmClient.ChartSpec {
+		ReleaseName: releaseIdentifier.ReleaseName,
+		Namespace: releaseIdentifier.ReleaseNamespace,
+		ValuesYaml: request.ValuesYaml,
+	}
+
+	_, err = helmClientObj.UpgradeRelease(context.Background(), helmRelease.Chart, updateChartSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	upgradeReleaseResponse := &client.UpgradeReleaseResponse{
+		Success: true,
+	}
+
+	return upgradeReleaseResponse, nil
+}
+
 
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)

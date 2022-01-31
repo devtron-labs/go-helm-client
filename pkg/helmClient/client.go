@@ -1,7 +1,11 @@
 package helmClient
 
 import (
+	"context"
+	"fmt"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
@@ -9,6 +13,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"log"
 	"os"
+	"sigs.k8s.io/yaml"
 )
 
 var storage = repo.File{}
@@ -123,9 +128,22 @@ func (c *HelmClient) ListReleaseHistory(name string, max int) ([]*release.Releas
 
 	return client.Run(name)
 }
+
 func (c *HelmClient) ListAllReleases() ([]*release.Release, error) {
 	return c.listAllReleases()
 }
+
+// UninstallReleaseByName uninstalls a release identified by the provided 'name'.
+func (c *HelmClient) UninstallReleaseByName(name string) error {
+	return c.uninstallReleaseByName(name)
+}
+
+// UpgradeRelease upgrades the provided chart and returns the corresponding release.
+// Namespace and other context is provided via the helmclient.Options struct when instantiating a client.
+func (c *HelmClient) UpgradeRelease(ctx context.Context, chart *chart.Chart, updatedChartSpec *ChartSpec) (*release.Release, error) {
+	return c.upgrade(ctx, chart, updatedChartSpec)
+}
+
 
 // listDeployedReleases lists all deployed helm releases.
 func (c *HelmClient) listDeployedReleases() ([]*release.Release, error) {
@@ -149,4 +167,107 @@ func (c *HelmClient) listAllReleases() ([]*release.Release, error) {
 	listClient.AllNamespaces = true
 	listClient.All = true
 	return listClient.Run()
+}
+
+// uninstallReleaseByName uninstalls a release identified by the provided 'name'.
+func (c *HelmClient) uninstallReleaseByName(name string) error {
+	client := action.NewUninstall(c.ActionConfig)
+
+	_, err := client.Run(name)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// upgrade upgrades a chart and CRDs.
+// Optionally lints the chart if the linting flag is set.
+func (c *HelmClient) upgrade(ctx context.Context, helmChart *chart.Chart, updatedChartSpec *ChartSpec) (*release.Release, error) {
+	client := action.NewUpgrade(c.ActionConfig)
+	mergeUpgradeOptions(updatedChartSpec, client)
+
+	if client.Version == "" {
+		client.Version = ">0.0.0-0"
+	}
+
+	if req := helmChart.Metadata.Dependencies; req != nil {
+		if err := action.CheckDependencies(helmChart, req); err != nil {
+			return nil, err
+		}
+	}
+
+	values, err := getValuesMap(updatedChartSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	release, err := client.RunWithContext(ctx, updatedChartSpec.ReleaseName, helmChart, values)
+	if err != nil {
+		return nil, err
+	}
+
+	return release, nil
+}
+
+// mergeUpgradeOptions merges values of the provided chart to helm upgrade options used by the client.
+func mergeUpgradeOptions(chartSpec *ChartSpec, upgradeOptions *action.Upgrade) {
+	upgradeOptions.Version = chartSpec.Version
+	upgradeOptions.Namespace = chartSpec.Namespace
+	upgradeOptions.Timeout = chartSpec.Timeout
+	upgradeOptions.Wait = chartSpec.Wait
+	upgradeOptions.DisableHooks = chartSpec.DisableHooks
+	upgradeOptions.Force = chartSpec.Force
+	upgradeOptions.ResetValues = chartSpec.ResetValues
+	upgradeOptions.ReuseValues = chartSpec.ReuseValues
+	upgradeOptions.Recreate = chartSpec.Recreate
+	upgradeOptions.MaxHistory = chartSpec.MaxHistory
+	upgradeOptions.Atomic = chartSpec.Atomic
+	upgradeOptions.CleanupOnFail = chartSpec.CleanupOnFail
+	upgradeOptions.DryRun = chartSpec.DryRun
+	upgradeOptions.SubNotes = chartSpec.SubNotes
+}
+
+// getChart returns a chart matching the provided chart name and options.
+func (c *HelmClient) getChart(chartName string, chartPathOptions *action.ChartPathOptions) (*chart.Chart, string, error) {
+	chartPath, err := chartPathOptions.LocateChart(chartName, c.Settings)
+	if err != nil {
+		return nil, "", err
+	}
+
+	helmChart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return helmChart, chartPath, err
+}
+
+// lint lints a chart's values.
+func (c *HelmClient) lint(chartPath string, values map[string]interface{}) error {
+	client := action.NewLint()
+
+	result := client.Run([]string{chartPath}, values)
+
+	for _, err := range result.Errors {
+		c.DebugLog("Error %s", err)
+	}
+
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("linting for chartpath %q failed", chartPath)
+	}
+
+	return nil
+}
+
+
+func getValuesMap(spec *ChartSpec) (map[string]interface{}, error) {
+	var values map[string]interface{}
+
+	err := yaml.Unmarshal([]byte(spec.ValuesYaml), &values)
+	if err != nil {
+		return nil, err
+	}
+
+	return values, nil
 }

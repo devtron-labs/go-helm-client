@@ -1,6 +1,8 @@
 package helmClient
 
 import (
+	"context"
+	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
 )
 
@@ -12,4 +14,6 @@ type Client interface {
 	GetRelease(name string) (*release.Release, error)
 	ListReleaseHistory(name string, max int) ([]*release.Release, error)
 	ListAllReleases() ([]*release.Release, error)
+	UninstallReleaseByName(name string) error
+	UpgradeRelease(ctx context.Context, chart *chart.Chart, updatedChartSpec *ChartSpec) (*release.Release, error)
 }
