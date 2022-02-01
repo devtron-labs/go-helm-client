@@ -294,7 +294,6 @@ func GetDeploymentHistory(req *client.AppDetailRequest) (*client.HelmAppDeployme
 				Sources:      chartMetadata.Sources,
 				Description:  chartMetadata.Description,
 			},
-			Manifest:     manifests,
 			DockerImages: dockerImages,
 			Version:      int32(helmRelease.Version),
 		}
@@ -302,7 +301,6 @@ func GetDeploymentHistory(req *client.AppDetailRequest) (*client.HelmAppDeployme
 	}
 	return &client.HelmAppDeploymentHistory{DeploymentHistory: helmAppDeployments}, nil
 }
-
 
 func GetDesiredManifest(req *client.ObjectRequest) (*client.DesiredManifestResponse, error) {
 	objectIdentifier := req.ObjectIdentifier
@@ -319,7 +317,7 @@ func GetDesiredManifest(req *client.ObjectRequest) (*client.DesiredManifestRespo
 	desiredManifest := ""
 	for _, manifest := range manifests {
 		gvk := manifest.GroupVersionKind()
-		if 	gvk.Group == objectIdentifier.Group && gvk.Version == objectIdentifier.Version && gvk.Kind == objectIdentifier.Kind && manifest.GetName() == objectIdentifier.Name {
+		if gvk.Group == objectIdentifier.Group && gvk.Version == objectIdentifier.Version && gvk.Kind == objectIdentifier.Kind && manifest.GetName() == objectIdentifier.Name {
 			dataByteArr, err := json.Marshal(manifest.UnstructuredContent())
 			if err != nil {
 				return nil, err
@@ -365,7 +363,6 @@ func UninstallRelease(releaseIdentifier *client.ReleaseIdentifier) (*client.Unin
 	return uninstallReleaseResponse, nil
 }
 
-
 func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	releaseIdentifier := request.ReleaseIdentifier
 	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
@@ -389,10 +386,10 @@ func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeRelea
 		return nil, err
 	}
 
-	updateChartSpec := &helmClient.ChartSpec {
+	updateChartSpec := &helmClient.ChartSpec{
 		ReleaseName: releaseIdentifier.ReleaseName,
-		Namespace: releaseIdentifier.ReleaseNamespace,
-		ValuesYaml: request.ValuesYaml,
+		Namespace:   releaseIdentifier.ReleaseNamespace,
+		ValuesYaml:  request.ValuesYaml,
 	}
 
 	_, err = helmClientObj.UpgradeRelease(context.Background(), helmRelease.Chart, updateChartSpec)
@@ -407,6 +404,42 @@ func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeRelea
 	return upgradeReleaseResponse, nil
 }
 
+func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
+	if request.DeploymentVersion <= 0 {
+		return nil, nil
+	}
+	conf, err := k8sUtils.GetRestConfig(request.ReleaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: request.ReleaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	helmClient, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	releases, err := helmClient.ListReleaseHistory(request.ReleaseIdentifier.ReleaseName, 20)
+	if err != nil {
+		return nil, err
+	}
+	if int32(len(releases)) < request.DeploymentVersion {
+		return nil, nil
+	}
+
+	resp := &client.DeploymentDetailResponse{
+		Manifest: releases[request.DeploymentVersion-1].Manifest,
+	}
+	return resp, nil
+}
 
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
@@ -506,11 +539,11 @@ func getDesiredOrLiveManifests(restConfig *rest.Config, desiredManifests []unstr
 			statusError, _ := err.(*errors2.StatusError)
 			desiredOrLiveManifest = &bean.DesiredOrLiveManifest{
 				// using deep copy as it replaces item in manifest in loop
-				Manifest: desiredManifest.DeepCopy(),
-				IsLiveManifestFetchError: true,
+				Manifest:                   desiredManifest.DeepCopy(),
+				IsLiveManifestFetchError:   true,
 				LiveManifestFetchErrorCode: statusError.Status().Code,
 			}
-		}else{
+		} else {
 			desiredOrLiveManifest = &bean.DesiredOrLiveManifest{
 				Manifest: liveManifest,
 			}
@@ -524,7 +557,7 @@ func getDesiredOrLiveManifests(restConfig *rest.Config, desiredManifests []unstr
 func buildNodes(restConfig *rest.Config, desiredOrLiveManifests []*bean.DesiredOrLiveManifest, releaseNamespace string, parentResourceRef *bean.ResourceRef) ([]*bean.ResourceNode, error) {
 	var nodes []*bean.ResourceNode
 	for _, desiredOrLiveManifest := range desiredOrLiveManifests {
-		manifest:= desiredOrLiveManifest.Manifest
+		manifest := desiredOrLiveManifest.Manifest
 		gvk := manifest.GroupVersionKind()
 
 		_namespace := manifest.GetNamespace()
@@ -568,19 +601,19 @@ func buildNodes(restConfig *rest.Config, desiredOrLiveManifests []*bean.DesiredO
 		}
 
 		// set health of node
-		if desiredOrLiveManifest.IsLiveManifestFetchError{
+		if desiredOrLiveManifest.IsLiveManifestFetchError {
 			if desiredOrLiveManifest.LiveManifestFetchErrorCode == http.StatusNotFound {
 				node.Health = &bean.HealthStatus{
 					Status:  bean.HealthStatusMissing,
 					Message: "Resource missing as live manifest not found",
 				}
-			}else{
+			} else {
 				node.Health = &bean.HealthStatus{
 					Status:  bean.HealthStatusUnknown,
 					Message: "Resource state unknown as error while fetching live manifest",
 				}
 			}
-		}else{
+		} else {
 			if healthCheck := gitops_engine.GetHealthCheckFunc(gvk); healthCheck != nil {
 				health, err := healthCheck(manifest)
 				if err != nil {
@@ -596,7 +629,6 @@ func buildNodes(restConfig *rest.Config, desiredOrLiveManifests []*bean.DesiredO
 				}
 			}
 		}
-
 
 		// hibernate set starts
 		if parentResourceRef == nil {
