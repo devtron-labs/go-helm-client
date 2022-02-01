@@ -405,9 +405,6 @@ func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeRelea
 }
 
 func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
-	if request.DeploymentVersion <= 0 {
-		return nil, nil
-	}
 	conf, err := k8sUtils.GetRestConfig(request.ReleaseIdentifier.ClusterConfig)
 	if err != nil {
 		return nil, err
@@ -431,12 +428,14 @@ func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.Deplo
 	if err != nil {
 		return nil, err
 	}
-	if int32(len(releases)) < request.DeploymentVersion {
-		return nil, nil
+	manifest := ""
+	for _, helmRelease := range releases {
+		if request.DeploymentVersion == int32(helmRelease.Version) {
+			manifest = helmRelease.Manifest
+		}
 	}
-
 	resp := &client.DeploymentDetailResponse{
-		Manifest: releases[request.DeploymentVersion-1].Manifest,
+		Manifest: manifest,
 	}
 	return resp, nil
 }
