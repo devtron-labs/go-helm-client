@@ -80,55 +80,11 @@ func GetHelmAppValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error)
 		return nil, err
 	}
 
-	defaultValues := helmRelease.Chart.Values
-	overrideValues := helmRelease.Config
-	var mergedValues map[string]interface{}
-	if overrideValues == nil {
-		mergedValues = defaultValues
-	} else {
-		defaultValuesByteArr, err := json.Marshal(defaultValues)
-		if err != nil {
-			return nil, err
-		}
-		overrideValuesByteArr, err := json.Marshal(overrideValues)
-		if err != nil {
-			return nil, err
-		}
-		mergedValuesByteArr, err := jsonpatch.MergePatch(defaultValuesByteArr, overrideValuesByteArr)
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(mergedValuesByteArr, &mergedValues)
-		if err != nil {
-			return nil, err
-		}
-	}
-	defaultValString, err := json.Marshal(defaultValues)
+	releaseInfo, err := buildReleaseInfoBasicData(helmRelease)
 	if err != nil {
 		return nil, err
-	}
-	overrideValuesString, err := json.Marshal(overrideValues)
-	if err != nil {
-		return nil, err
-	}
-	mergedValuesString, err := json.Marshal(mergedValues)
-	if err != nil {
-		return nil, err
-	}
-	var readme string
-	for _, file := range helmRelease.Chart.Files {
-		if file.Name == "README.md" {
-			readme = string(file.Data)
-			continue
-		}
 	}
 
-	res := &client.ReleaseInfo{
-		DefaultValues:  string(defaultValString),
-		OverrideValues: string(overrideValuesString),
-		MergedValues:   string(mergedValuesString),
-		Readme:         readme,
-	}
 	appDetail := &client.DeployedAppDetail{
 		AppId:        GatAppId(req.ClusterConfig.ClusterId, helmRelease),
 		AppName:      helmRelease.Name,
@@ -142,10 +98,11 @@ func GetHelmAppValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error)
 			Namespace:   helmRelease.Namespace,
 		},
 	}
-	res.DeployedAppDetail = appDetail
-	return res, nil
+	releaseInfo.DeployedAppDetail = appDetail
+	return releaseInfo, nil
 
 }
+
 
 func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
@@ -269,7 +226,7 @@ func UnHibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectI
 }
 
 func GetDeploymentHistory(req *client.AppDetailRequest) (*client.HelmAppDeploymentHistory, error) {
-	helmReleases, err := getHelmReleaseHistory(req)
+	helmReleases, err := getHelmReleaseHistory(req.ClusterConfig, req.Namespace, req.ReleaseName)
 	if err != nil {
 		return nil, err
 	}
@@ -405,38 +362,25 @@ func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeRelea
 }
 
 func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
-	conf, err := k8sUtils.GetRestConfig(request.ReleaseIdentifier.ClusterConfig)
-	if err != nil {
-		return nil, err
-	}
-	opt := &helmClient.RestConfClientOptions{
-		Options: &helmClient.Options{
-			Namespace: request.ReleaseIdentifier.ReleaseNamespace,
-		},
-		RestConfig: conf,
-	}
+	releaseIdentifier := request.ReleaseIdentifier
+	helmReleases, err := getHelmReleaseHistory(releaseIdentifier.ClusterConfig, releaseIdentifier.ReleaseNamespace, releaseIdentifier.ReleaseName)
 	if err != nil {
 		return nil, err
 	}
 
-	helmClient, err := helmClient.NewClientFromRestConf(opt)
-	if err != nil {
-		return nil, err
-	}
-
-	releases, err := helmClient.ListReleaseHistory(request.ReleaseIdentifier.ReleaseName, 20)
-	if err != nil {
-		return nil, err
-	}
-	manifest := ""
-	for _, helmRelease := range releases {
+	resp := &client.DeploymentDetailResponse{}
+	for _, helmRelease := range helmReleases {
 		if request.DeploymentVersion == int32(helmRelease.Version) {
-			manifest = helmRelease.Manifest
+			releaseInfo, err := buildReleaseInfoBasicData(helmRelease)
+			if err != nil {
+				return nil, err
+			}
+			resp.Manifest = helmRelease.Manifest
+			resp.ValuesYaml = releaseInfo.MergedValues
+			break
 		}
 	}
-	resp := &client.DeploymentDetailResponse{
-		Manifest: manifest,
-	}
+
 	return resp, nil
 }
 
@@ -462,14 +406,14 @@ func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, relea
 	return release, nil
 }
 
-func getHelmReleaseHistory(req *client.AppDetailRequest) ([]*release.Release, error) {
-	conf, err := k8sUtils.GetRestConfig(req.ClusterConfig)
+func getHelmReleaseHistory(clusterConfig *client.ClusterConfig, releaseNamespace string, releaseName string) ([]*release.Release, error) {
+	conf, err := k8sUtils.GetRestConfig(clusterConfig)
 	if err != nil {
 		return nil, err
 	}
 	opt := &helmClient.RestConfClientOptions{
 		Options: &helmClient.Options{
-			Namespace: req.Namespace,
+			Namespace: releaseNamespace,
 		},
 		RestConfig: conf,
 	}
@@ -479,12 +423,66 @@ func getHelmReleaseHistory(req *client.AppDetailRequest) ([]*release.Release, er
 		return nil, err
 	}
 
-	releases, err := helmClient.ListReleaseHistory(req.ReleaseName, 20)
+	releases, err := helmClient.ListReleaseHistory(releaseName, 20)
 	if err != nil {
 		return nil, err
 	}
 
 	return releases, nil
+}
+
+func buildReleaseInfoBasicData(helmRelease *release.Release) (*client.ReleaseInfo, error) {
+	defaultValues := helmRelease.Chart.Values
+	overrideValues := helmRelease.Config
+	var mergedValues map[string]interface{}
+	if overrideValues == nil {
+		mergedValues = defaultValues
+	} else {
+		defaultValuesByteArr, err := json.Marshal(defaultValues)
+		if err != nil {
+			return nil, err
+		}
+		overrideValuesByteArr, err := json.Marshal(overrideValues)
+		if err != nil {
+			return nil, err
+		}
+		mergedValuesByteArr, err := jsonpatch.MergePatch(defaultValuesByteArr, overrideValuesByteArr)
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(mergedValuesByteArr, &mergedValues)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defaultValString, err := json.Marshal(defaultValues)
+	if err != nil {
+		return nil, err
+	}
+	overrideValuesString, err := json.Marshal(overrideValues)
+	if err != nil {
+		return nil, err
+	}
+	mergedValuesString, err := json.Marshal(mergedValues)
+	if err != nil {
+		return nil, err
+	}
+	var readme string
+	for _, file := range helmRelease.Chart.Files {
+		if file.Name == "README.md" {
+			readme = string(file.Data)
+			continue
+		}
+	}
+
+	res := &client.ReleaseInfo{
+		DefaultValues:  string(defaultValString),
+		OverrideValues: string(overrideValuesString),
+		MergedValues:   string(mergedValuesString),
+		Readme:         readme,
+	}
+
+	return res, nil
 }
 
 func buildResourceTree(appDetailRequest *client.AppDetailRequest, release *release.Release) (*bean.ResourceTreeResponse, error) {
