@@ -147,61 +147,6 @@ func GetHelmAppValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error)
 
 }
 
-func GetDeploymentValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error) {
-	helmRelease, err := getHelmRelease(req.ClusterConfig, req.Namespace, req.ReleaseName)
-	if err != nil {
-		return nil, err
-	}
-
-	if helmRelease == nil {
-		err := errors.New("release not found")
-		return nil, err
-	}
-
-	defaultValues := helmRelease.Chart.Values
-	overrideValues := helmRelease.Config
-	var mergedValues map[string]interface{}
-	if overrideValues == nil {
-		mergedValues = defaultValues
-	} else {
-		defaultValuesByteArr, err := json.Marshal(defaultValues)
-		if err != nil {
-			return nil, err
-		}
-		overrideValuesByteArr, err := json.Marshal(overrideValues)
-		if err != nil {
-			return nil, err
-		}
-		mergedValuesByteArr, err := jsonpatch.MergePatch(defaultValuesByteArr, overrideValuesByteArr)
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(mergedValuesByteArr, &mergedValues)
-		if err != nil {
-			return nil, err
-		}
-	}
-	defaultValString, err := json.Marshal(defaultValues)
-	if err != nil {
-		return nil, err
-	}
-	overrideValuesString, err := json.Marshal(overrideValues)
-	if err != nil {
-		return nil, err
-	}
-	mergedValuesString, err := json.Marshal(mergedValues)
-	if err != nil {
-		return nil, err
-	}
-
-	res := &client.ReleaseInfo{
-		DefaultValues:  string(defaultValString),
-		OverrideValues: string(overrideValuesString),
-		MergedValues:   string(mergedValuesString),
-	}
-	return res, err
-}
-
 func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
@@ -460,30 +405,37 @@ func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeRelea
 }
 
 func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
-	appDetailRequest := &client.AppDetailRequest{
-		ClusterConfig: request.ReleaseIdentifier.ClusterConfig,
-		Namespace:     request.ReleaseIdentifier.ReleaseNamespace,
-		ReleaseName:   request.ReleaseIdentifier.ReleaseName,
+	conf, err := k8sUtils.GetRestConfig(request.ReleaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
 	}
-	releases, err := getHelmReleaseHistory(appDetailRequest)
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: request.ReleaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	helmClient, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	releases, err := helmClient.ListReleaseHistory(request.ReleaseIdentifier.ReleaseName, 20)
 	if err != nil {
 		return nil, err
 	}
 	manifest := ""
-	values, err := GetDeploymentValues(appDetailRequest)
-	if err != nil {
-		return nil, err
-	}
-	valuesYaml := values.MergedValues
 	for _, helmRelease := range releases {
 		if request.DeploymentVersion == int32(helmRelease.Version) {
 			manifest = helmRelease.Manifest
-			break
 		}
 	}
 	resp := &client.DeploymentDetailResponse{
-		Manifest:   manifest,
-		ValuesYaml: valuesYaml,
+		Manifest: manifest,
 	}
 	return resp, nil
 }
