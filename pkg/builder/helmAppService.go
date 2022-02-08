@@ -96,6 +96,11 @@ func (impl *ApplicationServiceServerImpl) UpgradeRelease(ctx context.Context, in
 	return UpgradeRelease(in)
 }
 
+func (impl *ApplicationServiceServerImpl) GetDeploymentDetail(ctx context.Context, in *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
+	impl.logger.Infow("get deployment detail request")
+	return GetDeploymentDetail(in)
+}
+
 func resourceRefResult(resourceRefs []*bean.ResourceRef) (resourceRefResults []*client.ResourceRef) {
 	for _, resourceRef := range resourceRefs {
 		resourceRefResult := &client.ResourceRef{
