@@ -4,6 +4,7 @@ import (
 	"context"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v3/pkg/repo"
 )
 
 //go:generate mockgen -source=interface.go -package mockhelmclient -destination=./mock/interface.go -self_package=. Client
@@ -16,4 +17,6 @@ type Client interface {
 	ListAllReleases() ([]*release.Release, error)
 	UninstallReleaseByName(name string) error
 	UpgradeRelease(ctx context.Context, chart *chart.Chart, updatedChartSpec *ChartSpec) (*release.Release, error)
+	AddOrUpdateChartRepo(entry repo.Entry) error
+	InstallChart(ctx context.Context, spec *ChartSpec) (*release.Release, error)
 }

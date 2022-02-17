@@ -2,11 +2,13 @@ package helmClient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/repo"
@@ -144,6 +146,48 @@ func (c *HelmClient) UpgradeRelease(ctx context.Context, chart *chart.Chart, upd
 	return c.upgrade(ctx, chart, updatedChartSpec)
 }
 
+// AddOrUpdateChartRepo adds or updates the provided helm chart repository.
+func (c *HelmClient) AddOrUpdateChartRepo(entry repo.Entry) error {
+	chartRepo, err := repo.NewChartRepository(&entry, c.Providers)
+	if err != nil {
+		return err
+	}
+
+	chartRepo.CachePath = c.Settings.RepositoryCache
+
+	_, err = chartRepo.DownloadIndexFile()
+	if err != nil {
+		return err
+	}
+
+	if c.storage.Has(entry.Name) {
+		// repository name already exists
+		return nil
+	}
+
+	c.storage.Update(&entry)
+	err = c.storage.WriteFile(c.Settings.RepositoryConfig, 0o644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// InstallChart installs the provided chart and returns the corresponding release.
+// Namespace and other context is provided via the helmclient.Options struct when instantiating a client.
+func (c *HelmClient) InstallChart(ctx context.Context, spec *ChartSpec) (*release.Release, error) {
+	installed, err := c.chartIsInstalled(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	if installed {
+		return nil, errors.New("release already exists with this releaseName and namespace")
+	}
+
+	return c.install(ctx, spec)
+}
 
 // listDeployedReleases lists all deployed helm releases.
 func (c *HelmClient) listDeployedReleases() ([]*release.Release, error) {
@@ -228,6 +272,25 @@ func mergeUpgradeOptions(chartSpec *ChartSpec, upgradeOptions *action.Upgrade) {
 	upgradeOptions.SubNotes = chartSpec.SubNotes
 }
 
+// mergeInstallOptions merges values of the provided chart to helm install options used by the client.
+func mergeInstallOptions(chartSpec *ChartSpec, installOptions *action.Install) {
+	installOptions.CreateNamespace = chartSpec.CreateNamespace
+	installOptions.DisableHooks = chartSpec.DisableHooks
+	installOptions.Replace = chartSpec.Replace
+	installOptions.Wait = chartSpec.Wait
+	installOptions.DependencyUpdate = chartSpec.DependencyUpdate
+	installOptions.Timeout = chartSpec.Timeout
+	installOptions.Namespace = chartSpec.Namespace
+	installOptions.ReleaseName = chartSpec.ReleaseName
+	installOptions.Version = chartSpec.Version
+	installOptions.GenerateName = chartSpec.GenerateName
+	installOptions.NameTemplate = chartSpec.NameTemplate
+	installOptions.Atomic = chartSpec.Atomic
+	installOptions.SkipCRDs = chartSpec.SkipCRDs
+	installOptions.DryRun = chartSpec.DryRun
+	installOptions.SubNotes = chartSpec.SubNotes
+}
+
 // getChart returns a chart matching the provided chart name and options.
 func (c *HelmClient) getChart(chartName string, chartPathOptions *action.ChartPathOptions) (*chart.Chart, string, error) {
 	chartPath, err := chartPathOptions.LocateChart(chartName, c.Settings)
@@ -270,4 +333,78 @@ func getValuesMap(spec *ChartSpec) (map[string]interface{}, error) {
 	}
 
 	return values, nil
+}
+
+// chartIsInstalled checks whether a chart is already installed
+// in a namespace or not based on the provided chart spec.
+// Note that this function only considers the contained chart name and namespace.
+func (c *HelmClient) chartIsInstalled(spec *ChartSpec) (bool, error) {
+	releases, err := c.listDeployedReleases()
+	if err != nil {
+		return false, err
+	}
+
+	for _, r := range releases {
+		if r.Name == spec.ReleaseName && r.Namespace == spec.Namespace {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// install installs the provided chart.
+// Optionally lints the chart if the linting flag is set.
+func (c *HelmClient) install(ctx context.Context, spec *ChartSpec) (*release.Release, error) {
+	client := action.NewInstall(c.ActionConfig)
+	mergeInstallOptions(spec, client)
+
+	if client.Version == "" {
+		client.Version = ">0.0.0-0"
+	}
+
+	helmChart, chartPath, err := c.getChart(spec.ChartName, &client.ChartPathOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	if helmChart.Metadata.Type != "" && helmChart.Metadata.Type != "application" {
+		return nil, fmt.Errorf(
+			"chart %q has an unsupported type and is not installable: %q",
+			helmChart.Metadata.Name,
+			helmChart.Metadata.Type,
+		)
+	}
+
+	if req := helmChart.Metadata.Dependencies; req != nil {
+		if err := action.CheckDependencies(helmChart, req); err != nil {
+			if client.DependencyUpdate {
+				man := &downloader.Manager{
+					ChartPath:        chartPath,
+					Keyring:          client.ChartPathOptions.Keyring,
+					SkipUpdate:       false,
+					Getters:          c.Providers,
+					RepositoryConfig: c.Settings.RepositoryConfig,
+					RepositoryCache:  c.Settings.RepositoryCache,
+				}
+				if err := man.Update(); err != nil {
+					return nil, err
+				}
+			} else {
+				return nil, err
+			}
+		}
+	}
+
+	values, err := getValuesMap(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	rel, err := client.RunWithContext(ctx, helmChart, values)
+	if err != nil {
+		return rel, err
+	}
+
+	return rel, nil
 }

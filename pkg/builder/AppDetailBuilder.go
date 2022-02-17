@@ -16,6 +16,7 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v3/pkg/repo"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
@@ -102,7 +103,6 @@ func GetHelmAppValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error)
 	return releaseInfo, nil
 
 }
-
 
 func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
@@ -382,6 +382,66 @@ func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.Deplo
 	}
 
 	return resp, nil
+}
+
+func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallReleaseResponse, error) {
+	releaseIdentifier := request.ReleaseIdentifier
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClientObj, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add or update chart repo starts
+	chartRepoRequest := request.ChartRepository
+	chartRepo := repo.Entry{
+		Name:     chartRepoRequest.Name,
+		URL:      chartRepoRequest.Url,
+		Username: chartRepoRequest.Username,
+		Password: chartRepoRequest.Password,
+		// Since helm 3.6.1 it is necessary to pass 'PassCredentialsAll = true'.
+		PassCredentialsAll: true,
+	}
+
+	err = helmClientObj.AddOrUpdateChartRepo(chartRepo)
+	if err != nil {
+		return nil, err
+	}
+	// Add or update chart repo ends
+
+	// Install release starts
+	chartSpec := &helmClient.ChartSpec{
+		ReleaseName:      releaseIdentifier.ReleaseName,
+		Namespace:        releaseIdentifier.ReleaseNamespace,
+		ValuesYaml:       request.ValuesYaml,
+		ChartName:        request.ChartName,
+		Version:          request.ChartVersion,
+		DependencyUpdate: true,
+		UpgradeCRDs:      true,
+		Wait:             true,
+	}
+	_, err = helmClientObj.InstallChart(context.Background(), chartSpec)
+	if err != nil {
+		return nil, err
+	}
+	// Install release ends
+
+	installReleaseResponse := &client.InstallReleaseResponse{
+		Success: true,
+	}
+
+	return installReleaseResponse, nil
+
 }
 
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {

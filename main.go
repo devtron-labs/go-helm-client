@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	client "github.com/devtron-labs/go-helm-client/grpc"
+	"github.com/devtron-labs/go-helm-client/internal"
 	"github.com/devtron-labs/go-helm-client/pkg/builder"
 	"go.uber.org/zap"
 	_ "go.uber.org/zap"
@@ -38,7 +39,11 @@ func main() {
 		}),
 	}
 	grpcServer := grpc.NewServer(opts...)
-	client.RegisterApplicationServiceServer(grpcServer, builder.NewApplicationServiceServerImpl(logger))
+
+	// create repository locker singleton
+	chartRepositoryLogger := internal.NewChartRepositoryLocker(logger)
+
+	client.RegisterApplicationServiceServer(grpcServer, builder.NewApplicationServiceServerImpl(logger, chartRepositoryLogger))
 	logger.Info("starting server ...................")
 	err = grpcServer.Serve(lis)
 	if err != nil {
