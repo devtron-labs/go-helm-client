@@ -404,13 +404,15 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 
 	// Add or update chart repo starts
 	chartRepoRequest := request.ChartRepository
+	chartRepoName := chartRepoRequest.Name
 	chartRepo := repo.Entry{
-		Name:     chartRepoRequest.Name,
+		Name:     chartRepoName,
 		URL:      chartRepoRequest.Url,
 		Username: chartRepoRequest.Username,
 		Password: chartRepoRequest.Password,
 		// Since helm 3.6.1 it is necessary to pass 'PassCredentialsAll = true'.
-		PassCredentialsAll: true,
+		PassCredentialsAll:    true,
+		InsecureSkipTLSverify: true,
 	}
 
 	err = helmClientObj.AddOrUpdateChartRepo(chartRepo)
@@ -424,11 +426,10 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 		ReleaseName:      releaseIdentifier.ReleaseName,
 		Namespace:        releaseIdentifier.ReleaseNamespace,
 		ValuesYaml:       request.ValuesYaml,
-		ChartName:        request.ChartName,
+		ChartName:        chartRepoName + "/" + request.ChartName,
 		Version:          request.ChartVersion,
 		DependencyUpdate: true,
 		UpgradeCRDs:      true,
-		Wait:             true,
 	}
 	_, err = helmClientObj.InstallChart(context.Background(), chartSpec)
 	if err != nil {

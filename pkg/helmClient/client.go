@@ -160,10 +160,10 @@ func (c *HelmClient) AddOrUpdateChartRepo(entry repo.Entry) error {
 		return err
 	}
 
-	if c.storage.Has(entry.Name) {
+	/*if c.storage.Has(entry.Name) {
 		// repository name already exists
 		return nil
-	}
+	}*/
 
 	c.storage.Update(&entry)
 	err = c.storage.WriteFile(c.Settings.RepositoryConfig, 0o644)
@@ -400,7 +400,6 @@ func (c *HelmClient) install(ctx context.Context, spec *ChartSpec) (*release.Rel
 	if err != nil {
 		return nil, err
 	}
-
 	rel, err := client.RunWithContext(ctx, helmChart, values)
 	if err != nil {
 		return rel, err
