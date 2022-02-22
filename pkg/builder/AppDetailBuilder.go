@@ -445,6 +445,69 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 
 }
 
+
+func UpgradeReleaseWithChartInfo(request *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	releaseIdentifier := request.ReleaseIdentifier
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClientObj, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add or update chart repo starts
+	chartRepoRequest := request.ChartRepository
+	chartRepoName := chartRepoRequest.Name
+	chartRepo := repo.Entry{
+		Name:     chartRepoName,
+		URL:      chartRepoRequest.Url,
+		Username: chartRepoRequest.Username,
+		Password: chartRepoRequest.Password,
+		// Since helm 3.6.1 it is necessary to pass 'PassCredentialsAll = true'.
+		PassCredentialsAll:    true,
+		InsecureSkipTLSverify: true,
+	}
+
+	err = helmClientObj.AddOrUpdateChartRepo(chartRepo)
+	if err != nil {
+		return nil, err
+	}
+	// Add or update chart repo ends
+
+	// Update release starts
+	chartSpec := &helmClient.ChartSpec{
+		ReleaseName:      releaseIdentifier.ReleaseName,
+		Namespace:        releaseIdentifier.ReleaseNamespace,
+		ValuesYaml:       request.ValuesYaml,
+		ChartName:        chartRepoName + "/" + request.ChartName,
+		Version:          request.ChartVersion,
+		DependencyUpdate: true,
+		UpgradeCRDs:      true,
+	}
+	_, err = helmClientObj.UpgradeReleaseWithChartInfo(context.Background(), chartSpec)
+	if err != nil {
+		return nil, err
+	}
+	// Update release ends
+
+	upgradeReleaseResponse := &client.UpgradeReleaseResponse{
+		Success: true,
+	}
+
+	return upgradeReleaseResponse, nil
+
+}
+
+
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
 	if err != nil {

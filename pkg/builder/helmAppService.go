@@ -113,6 +113,13 @@ func (impl *ApplicationServiceServerImpl) InstallRelease(ctx context.Context, in
 	return InstallRelease(in)
 }
 
+func (impl *ApplicationServiceServerImpl) UpgradeReleaseWithChartInfo(ctx context.Context, in *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	impl.logger.Infow("upgrade release with chart info request")
+	impl.chartRepositoryLocker.Lock(in.ChartRepository.Name)
+	defer impl.chartRepositoryLocker.Unlock(in.ChartRepository.Name)
+	return UpgradeReleaseWithChartInfo(in)
+}
+
 func resourceRefResult(resourceRefs []*bean.ResourceRef) (resourceRefResults []*client.ResourceRef) {
 	for _, resourceRef := range resourceRefs {
 		resourceRefResult := &client.ResourceRef{

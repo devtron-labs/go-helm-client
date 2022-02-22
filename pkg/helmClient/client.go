@@ -189,6 +189,12 @@ func (c *HelmClient) InstallChart(ctx context.Context, spec *ChartSpec) (*releas
 	return c.install(ctx, spec)
 }
 
+// UpgradeReleaseWithChartInfo installs the provided chart and returns the corresponding release.
+// Namespace and other context is provided via the helmclient.Options struct when instantiating a client.
+func (c *HelmClient) UpgradeReleaseWithChartInfo(ctx context.Context, spec *ChartSpec) (*release.Release, error) {
+	return c.upgradeWithChartInfo(ctx, spec)
+}
+
 // listDeployedReleases lists all deployed helm releases.
 func (c *HelmClient) listDeployedReleases() ([]*release.Release, error) {
 	listClient := action.NewList(c.ActionConfig)
@@ -247,6 +253,40 @@ func (c *HelmClient) upgrade(ctx context.Context, helmChart *chart.Chart, update
 	}
 
 	release, err := client.RunWithContext(ctx, updatedChartSpec.ReleaseName, helmChart, values)
+	if err != nil {
+		return nil, err
+	}
+
+	return release, nil
+}
+
+// upgradeWithChartInfo upgrades a chart and CRDs.
+// Optionally lints the chart if the linting flag is set.
+func (c *HelmClient) upgradeWithChartInfo(ctx context.Context, spec *ChartSpec) (*release.Release, error) {
+	client := action.NewUpgrade(c.ActionConfig)
+	mergeUpgradeOptions(spec, client)
+
+	if client.Version == "" {
+		client.Version = ">0.0.0-0"
+	}
+
+	helmChart, _, err := c.getChart(spec.ChartName, &client.ChartPathOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	if req := helmChart.Metadata.Dependencies; req != nil {
+		if err := action.CheckDependencies(helmChart, req); err != nil {
+			return nil, err
+		}
+	}
+
+	values, err := getValuesMap(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	release, err := client.RunWithContext(ctx, spec.ReleaseName, helmChart, values)
 	if err != nil {
 		return nil, err
 	}

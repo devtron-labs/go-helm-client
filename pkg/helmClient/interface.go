@@ -19,4 +19,5 @@ type Client interface {
 	UpgradeRelease(ctx context.Context, chart *chart.Chart, updatedChartSpec *ChartSpec) (*release.Release, error)
 	AddOrUpdateChartRepo(entry repo.Entry) error
 	InstallChart(ctx context.Context, spec *ChartSpec) (*release.Release, error)
+	UpgradeReleaseWithChartInfo(ctx context.Context, spec *ChartSpec) (*release.Release, error)
 }
