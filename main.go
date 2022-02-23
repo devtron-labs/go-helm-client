@@ -41,9 +41,9 @@ func main() {
 	grpcServer := grpc.NewServer(opts...)
 
 	// create repository locker singleton
-	chartRepositoryLogger := internal.NewChartRepositoryLocker(logger)
+	chartRepositoryLocker := internal.NewChartRepositoryLocker(logger)
 
-	client.RegisterApplicationServiceServer(grpcServer, builder.NewApplicationServiceServerImpl(logger, chartRepositoryLogger))
+	client.RegisterApplicationServiceServer(grpcServer, builder.NewApplicationServiceServerImpl(logger, chartRepositoryLocker))
 	logger.Info("starting server ...................")
 	err = grpcServer.Serve(lis)
 	if err != nil {
