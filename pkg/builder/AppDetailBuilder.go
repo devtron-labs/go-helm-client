@@ -430,6 +430,7 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 		Version:          request.ChartVersion,
 		DependencyUpdate: true,
 		UpgradeCRDs:      true,
+		CreateNamespace:  true,
 	}
 	_, err = helmClientObj.InstallChart(context.Background(), chartSpec)
 	if err != nil {
@@ -444,7 +445,6 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 	return installReleaseResponse, nil
 
 }
-
 
 func UpgradeReleaseWithChartInfo(request *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	releaseIdentifier := request.ReleaseIdentifier
@@ -506,7 +506,6 @@ func UpgradeReleaseWithChartInfo(request *client.InstallReleaseRequest) (*client
 	return upgradeReleaseResponse, nil
 
 }
-
 
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
