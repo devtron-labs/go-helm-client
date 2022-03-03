@@ -183,7 +183,8 @@ func (c *HelmClient) InstallChart(ctx context.Context, spec *ChartSpec) (*releas
 	}
 
 	if installed {
-		return nil, errors.New("release already exists with this releaseName and namespace")
+		errorMessage := fmt.Sprintf("release already exists with releaseName : %s in namespace : %s", spec.ReleaseName, spec.Namespace)
+		return nil, errors.New(errorMessage)
 	}
 
 	return c.install(ctx, spec)

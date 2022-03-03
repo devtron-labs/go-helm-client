@@ -1,4 +1,4 @@
-package builder
+package service
 
 import (
 	"context"
@@ -61,15 +61,16 @@ func (impl *ApplicationServiceServerImpl) GetAppDetail(ctxt context.Context, req
 	impl.logger.Infow("appdetail", "detail", res)
 	return res, nil
 }
+
 func (impl *ApplicationServiceServerImpl) Hibernate(ctx context.Context, in *client.HibernateRequest) (*client.HibernateResponse, error) {
 	impl.logger.Infow("hibernate req")
-	res, err := Hibernate(in.ClusterConfig, in.ObjectIdentifier)
+	res, err := Hibernate(ctx, in.ClusterConfig, in.ObjectIdentifier)
 	return res, err
 }
 
 func (impl *ApplicationServiceServerImpl) UnHibernate(ctx context.Context, in *client.HibernateRequest) (*client.HibernateResponse, error) {
 	impl.logger.Infow("unhibernate req")
-	res, err := UnHibernate(in.ClusterConfig, in.GetObjectIdentifier())
+	res, err := UnHibernate(ctx, in.ClusterConfig, in.GetObjectIdentifier())
 	return res, err
 }
 
@@ -98,7 +99,7 @@ func (impl *ApplicationServiceServerImpl) UninstallRelease(ctx context.Context, 
 
 func (impl *ApplicationServiceServerImpl) UpgradeRelease(ctx context.Context, in *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	impl.logger.Infow("upgrade release request")
-	return UpgradeRelease(in)
+	return UpgradeRelease(ctx, in)
 }
 
 func (impl *ApplicationServiceServerImpl) GetDeploymentDetail(ctx context.Context, in *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
@@ -110,14 +111,14 @@ func (impl *ApplicationServiceServerImpl) InstallRelease(ctx context.Context, in
 	impl.logger.Infow("install release request")
 	impl.chartRepositoryLocker.Lock(in.ChartRepository.Name)
 	defer impl.chartRepositoryLocker.Unlock(in.ChartRepository.Name)
-	return InstallRelease(in)
+	return InstallRelease(ctx, in)
 }
 
 func (impl *ApplicationServiceServerImpl) UpgradeReleaseWithChartInfo(ctx context.Context, in *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	impl.logger.Infow("upgrade release with chart info request")
 	impl.chartRepositoryLocker.Lock(in.ChartRepository.Name)
 	defer impl.chartRepositoryLocker.Unlock(in.ChartRepository.Name)
-	return UpgradeReleaseWithChartInfo(in)
+	return UpgradeReleaseWithChartInfo(ctx, in)
 }
 
 func resourceRefResult(resourceRefs []*bean.ResourceRef) (resourceRefResults []*client.ResourceRef) {

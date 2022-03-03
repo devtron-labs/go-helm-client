@@ -5,7 +5,7 @@ import (
 	"fmt"
 	client "github.com/devtron-labs/go-helm-client/grpc"
 	"github.com/devtron-labs/go-helm-client/internal"
-	"github.com/devtron-labs/go-helm-client/pkg/builder"
+	"github.com/devtron-labs/go-helm-client/pkg/service"
 	"go.uber.org/zap"
 	_ "go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -43,7 +43,7 @@ func main() {
 	// create repository locker singleton
 	chartRepositoryLocker := internal.NewChartRepositoryLocker(logger)
 
-	client.RegisterApplicationServiceServer(grpcServer, builder.NewApplicationServiceServerImpl(logger, chartRepositoryLocker))
+	client.RegisterApplicationServiceServer(grpcServer, service.NewApplicationServiceServerImpl(logger, chartRepositoryLocker))
 	logger.Info("starting server ...................")
 	err = grpcServer.Serve(lis)
 	if err != nil {
@@ -59,7 +59,7 @@ func appDetail() bool {
 			Namespace:          namespace,
 			ReleaseName:        releaseName,
 		}
-		appDetail, err := builder.BuildAppDetail(appDetailRequest)
+		appDetail, err := service.BuildAppDetail(appDetailRequest)
 		if err != nil {
 			fmt.Println(err)
 			return true
@@ -82,7 +82,7 @@ func appDetail() bool {
 			Namespace:          namespace,
 			ReleaseName:        releaseName,
 		}
-		helmAppValues, err := builder.GetHelmAppValues(appValuesRequest)
+		helmAppValues, err := service.GetHelmAppValues(appValuesRequest)
 		if err != nil {
 			fmt.Println(err)
 			return true
@@ -115,7 +115,7 @@ func appDetail() bool {
 		Host:        clusterHost,
 		BearerToken: clusterBaererToken,
 	}*/
-	/*_, err = builder.Hibernate(clusterConfig, hibernateRequests)
+	/*_, err = service.Hibernate(clusterConfig, hibernateRequests)
 	if err != nil {
 		fmt.Println(err)
 		return true
@@ -136,7 +136,7 @@ func appDetail() bool {
 			unHibernateRequests = append(unHibernateRequests, unHibernateRequest)
 		}
 	}
-	_, err = builder.UnHibernate(clusterConfig, unHibernateRequests)
+	_, err = service.UnHibernate(clusterConfig, unHibernateRequests)
 	if err != nil {
 		fmt.Println(err)
 		return true
@@ -150,7 +150,7 @@ func appDetail() bool {
 		Namespace:          namespace,
 		ReleaseName:        releaseName,
 	}
-	deploymentHistory, err := builder.GetDeploymentHistory(appDeploymentHistoryRequest)
+	deploymentHistory, err := service.GetDeploymentHistory(appDeploymentHistoryRequest)
 	if err != nil {
 		fmt.Println(err)
 		return true

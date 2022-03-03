@@ -1,4 +1,4 @@
-package builder
+package service
 
 import (
 	"context"
@@ -104,7 +104,7 @@ func GetHelmAppValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error)
 
 }
 
-func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
+func Hibernate(ctx context.Context, clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
 	if err != nil {
@@ -155,7 +155,7 @@ func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIde
 			Patch:                fmt.Sprintf(hibernatePatch, 0, hibernateReplicaAnnotation, strconv.Itoa(int(replicas))),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(conf, context.Background(), patchRequest)
+		err = k8sUtils.PatchResource(conf, ctx, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = "replicas not found in manifest"
@@ -166,7 +166,7 @@ func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIde
 	return resp, nil
 }
 
-func UnHibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
+func UnHibernate(ctx context.Context, clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
 
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
@@ -214,7 +214,7 @@ func UnHibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectI
 			Patch:                fmt.Sprintf(hibernatePatch, originalReplicaCount, hibernateReplicaAnnotation, "0"),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(conf, context.Background(), patchRequest)
+		err = k8sUtils.PatchResource(conf, ctx, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = err.Error()
@@ -320,7 +320,7 @@ func UninstallRelease(releaseIdentifier *client.ReleaseIdentifier) (*client.Unin
 	return uninstallReleaseResponse, nil
 }
 
-func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+func UpgradeRelease(ctx context.Context, request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	releaseIdentifier := request.ReleaseIdentifier
 	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
 	if err != nil {
@@ -349,7 +349,7 @@ func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeRelea
 		ValuesYaml:  request.ValuesYaml,
 	}
 
-	_, err = helmClientObj.UpgradeRelease(context.Background(), helmRelease.Chart, updateChartSpec)
+	_, err = helmClientObj.UpgradeRelease(ctx, helmRelease.Chart, updateChartSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.Deplo
 	return resp, nil
 }
 
-func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallReleaseResponse, error) {
+func InstallRelease(ctx context.Context, request *client.InstallReleaseRequest) (*client.InstallReleaseResponse, error) {
 	releaseIdentifier := request.ReleaseIdentifier
 	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
 	if err != nil {
@@ -426,13 +426,13 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 		ReleaseName:      releaseIdentifier.ReleaseName,
 		Namespace:        releaseIdentifier.ReleaseNamespace,
 		ValuesYaml:       request.ValuesYaml,
-		ChartName:        chartRepoName + "/" + request.ChartName,
+		ChartName:        fmt.Sprintf("%s/%s", chartRepoName, request.ChartName),
 		Version:          request.ChartVersion,
 		DependencyUpdate: true,
 		UpgradeCRDs:      true,
 		CreateNamespace:  true,
 	}
-	_, err = helmClientObj.InstallChart(context.Background(), chartSpec)
+	_, err = helmClientObj.InstallChart(ctx, chartSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +446,7 @@ func InstallRelease(request *client.InstallReleaseRequest) (*client.InstallRelea
 
 }
 
-func UpgradeReleaseWithChartInfo(request *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+func UpgradeReleaseWithChartInfo(ctx context.Context, request *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	releaseIdentifier := request.ReleaseIdentifier
 	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
 	if err != nil {
@@ -488,12 +488,12 @@ func UpgradeReleaseWithChartInfo(request *client.InstallReleaseRequest) (*client
 		ReleaseName:      releaseIdentifier.ReleaseName,
 		Namespace:        releaseIdentifier.ReleaseNamespace,
 		ValuesYaml:       request.ValuesYaml,
-		ChartName:        chartRepoName + "/" + request.ChartName,
+		ChartName:        fmt.Sprintf("%s/%s", chartRepoName, request.ChartName),
 		Version:          request.ChartVersion,
 		DependencyUpdate: true,
 		UpgradeCRDs:      true,
 	}
-	_, err = helmClientObj.UpgradeReleaseWithChartInfo(context.Background(), chartSpec)
+	_, err = helmClientObj.UpgradeReleaseWithChartInfo(ctx, chartSpec)
 	if err != nil {
 		return nil, err
 	}
