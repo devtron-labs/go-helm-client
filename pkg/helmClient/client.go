@@ -16,7 +16,6 @@ import (
 	"log"
 	"os"
 	"sigs.k8s.io/yaml"
-	"time"
 )
 
 var storage = repo.File{}
@@ -254,9 +253,6 @@ func (c *HelmClient) upgrade(ctx context.Context, helmChart *chart.Chart, update
 		return nil, err
 	}
 
-	if _, deadlineSet := ctx.Deadline(); !deadlineSet {
-		ctx, _ = context.WithTimeout(context.Background(), 60 * time.Second)
-	}
 	release, err := client.RunWithContext(ctx, updatedChartSpec.ReleaseName, helmChart, values)
 	if err != nil {
 		return nil, err
@@ -291,9 +287,6 @@ func (c *HelmClient) upgradeWithChartInfo(ctx context.Context, spec *ChartSpec) 
 		return nil, err
 	}
 
-	if _, deadlineSet := ctx.Deadline(); !deadlineSet {
-		ctx, _ = context.WithTimeout(context.Background(), 60 * time.Second)
-	}
 	release, err := client.RunWithContext(ctx, spec.ReleaseName, helmChart, values)
 	if err != nil {
 		return nil, err
@@ -449,9 +442,6 @@ func (c *HelmClient) install(ctx context.Context, spec *ChartSpec) (*release.Rel
 		return nil, err
 	}
 
-	if _, deadlineSet := ctx.Deadline(); !deadlineSet {
-		ctx, _ = context.WithTimeout(context.Background(), 60 * time.Second)
-	}
 	rel, err := client.RunWithContext(ctx, helmChart, values)
 	if err != nil {
 		return rel, err

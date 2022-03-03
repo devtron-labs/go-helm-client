@@ -155,7 +155,7 @@ func Hibernate(ctx context.Context, clusterConfig *client.ClusterConfig, request
 			Patch:                fmt.Sprintf(hibernatePatch, 0, hibernateReplicaAnnotation, strconv.Itoa(int(replicas))),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(ctx, conf, patchRequest)
+		err = k8sUtils.PatchResource(context.Background(), conf, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = "replicas not found in manifest"
@@ -214,7 +214,7 @@ func UnHibernate(ctx context.Context, clusterConfig *client.ClusterConfig, reque
 			Patch:                fmt.Sprintf(hibernatePatch, originalReplicaCount, hibernateReplicaAnnotation, "0"),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(ctx, conf, patchRequest)
+		err = k8sUtils.PatchResource(context.Background(), conf, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = err.Error()
@@ -349,7 +349,7 @@ func UpgradeRelease(ctx context.Context, request *client.UpgradeReleaseRequest) 
 		ValuesYaml:  request.ValuesYaml,
 	}
 
-	_, err = helmClientObj.UpgradeRelease(ctx, helmRelease.Chart, updateChartSpec)
+	_, err = helmClientObj.UpgradeRelease(context.Background(), helmRelease.Chart, updateChartSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +432,7 @@ func InstallRelease(ctx context.Context, request *client.InstallReleaseRequest) 
 		UpgradeCRDs:      true,
 		CreateNamespace:  true,
 	}
-	_, err = helmClientObj.InstallChart(ctx, chartSpec)
+	_, err = helmClientObj.InstallChart(context.Background(), chartSpec)
 	if err != nil {
 		return nil, err
 	}
@@ -493,7 +493,7 @@ func UpgradeReleaseWithChartInfo(ctx context.Context, request *client.InstallRel
 		DependencyUpdate: true,
 		UpgradeCRDs:      true,
 	}
-	_, err = helmClientObj.UpgradeReleaseWithChartInfo(ctx, chartSpec)
+	_, err = helmClientObj.UpgradeReleaseWithChartInfo(context.Background(), chartSpec)
 	if err != nil {
 		return nil, err
 	}
