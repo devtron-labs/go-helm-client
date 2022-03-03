@@ -133,7 +133,7 @@ func GetChildObjects(restConfig *rest.Config, namespace string, parentGvk schema
 	return manifests, nil
 }
 
-func PatchResource(restConfig *rest.Config, ctx context.Context, r *bean.KubernetesResourcePatchRequest) error {
+func PatchResource(ctx context.Context, restConfig *rest.Config, r *bean.KubernetesResourcePatchRequest) error {
 	client, err := dynamicClient.NewForConfig(restConfig)
 	if err != nil {
 		return err

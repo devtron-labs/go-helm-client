@@ -1,10 +1,11 @@
-package builder
+package service
 
 import (
 	"context"
 	"fmt"
 	"github.com/devtron-labs/go-helm-client/bean"
 	"github.com/devtron-labs/go-helm-client/grpc"
+	"github.com/devtron-labs/go-helm-client/internal"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -12,16 +13,20 @@ import (
 
 type ApplicationServiceServerImpl struct {
 	client.UnimplementedApplicationServiceServer
-	appService AppService
-	logger     *zap.SugaredLogger
+	appService            AppService
+	logger                *zap.SugaredLogger
+	chartRepositoryLocker *internal.ChartRepositoryLocker
 }
 
 func (impl *ApplicationServiceServerImpl) mustEmbedUnimplementedApplicationServiceServer() {
 	panic("implement me")
 }
 
-func NewApplicationServiceServerImpl(logger *zap.SugaredLogger) *ApplicationServiceServerImpl {
-	return &ApplicationServiceServerImpl{logger: logger}
+func NewApplicationServiceServerImpl(logger *zap.SugaredLogger, chartRepositoryLocker *internal.ChartRepositoryLocker) *ApplicationServiceServerImpl {
+	return &ApplicationServiceServerImpl{
+		logger:                logger,
+		chartRepositoryLocker: chartRepositoryLocker,
+	}
 }
 
 func (impl *ApplicationServiceServerImpl) ListApplications(req *client.AppListRequest, res client.ApplicationService_ListApplicationsServer) error {
@@ -56,15 +61,16 @@ func (impl *ApplicationServiceServerImpl) GetAppDetail(ctxt context.Context, req
 	impl.logger.Infow("appdetail", "detail", res)
 	return res, nil
 }
+
 func (impl *ApplicationServiceServerImpl) Hibernate(ctx context.Context, in *client.HibernateRequest) (*client.HibernateResponse, error) {
 	impl.logger.Infow("hibernate req")
-	res, err := Hibernate(in.ClusterConfig, in.ObjectIdentifier)
+	res, err := Hibernate(ctx, in.ClusterConfig, in.ObjectIdentifier)
 	return res, err
 }
 
 func (impl *ApplicationServiceServerImpl) UnHibernate(ctx context.Context, in *client.HibernateRequest) (*client.HibernateResponse, error) {
 	impl.logger.Infow("unhibernate req")
-	res, err := UnHibernate(in.ClusterConfig, in.GetObjectIdentifier())
+	res, err := UnHibernate(ctx, in.ClusterConfig, in.GetObjectIdentifier())
 	return res, err
 }
 
@@ -93,12 +99,26 @@ func (impl *ApplicationServiceServerImpl) UninstallRelease(ctx context.Context, 
 
 func (impl *ApplicationServiceServerImpl) UpgradeRelease(ctx context.Context, in *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	impl.logger.Infow("upgrade release request")
-	return UpgradeRelease(in)
+	return UpgradeRelease(ctx, in)
 }
 
 func (impl *ApplicationServiceServerImpl) GetDeploymentDetail(ctx context.Context, in *client.DeploymentDetailRequest) (*client.DeploymentDetailResponse, error) {
 	impl.logger.Infow("get deployment detail request")
 	return GetDeploymentDetail(in)
+}
+
+func (impl *ApplicationServiceServerImpl) InstallRelease(ctx context.Context, in *client.InstallReleaseRequest) (*client.InstallReleaseResponse, error) {
+	impl.logger.Infow("install release request")
+	impl.chartRepositoryLocker.Lock(in.ChartRepository.Name)
+	defer impl.chartRepositoryLocker.Unlock(in.ChartRepository.Name)
+	return InstallRelease(ctx, in)
+}
+
+func (impl *ApplicationServiceServerImpl) UpgradeReleaseWithChartInfo(ctx context.Context, in *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	impl.logger.Infow("upgrade release with chart info request")
+	impl.chartRepositoryLocker.Lock(in.ChartRepository.Name)
+	defer impl.chartRepositoryLocker.Unlock(in.ChartRepository.Name)
+	return UpgradeReleaseWithChartInfo(ctx, in)
 }
 
 func resourceRefResult(resourceRefs []*bean.ResourceRef) (resourceRefResults []*client.ResourceRef) {

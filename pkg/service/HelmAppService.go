@@ -1,4 +1,4 @@
-package builder
+package service
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"helm.sh/helm/v3/pkg/release"
+	"helm.sh/helm/v3/pkg/repo"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	errors2 "k8s.io/apimachinery/pkg/api/errors"
@@ -103,8 +104,7 @@ func GetHelmAppValues(req *client.AppDetailRequest) (*client.ReleaseInfo, error)
 
 }
 
-
-func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
+func Hibernate(ctx context.Context, clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
 	if err != nil {
@@ -155,7 +155,7 @@ func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIde
 			Patch:                fmt.Sprintf(hibernatePatch, 0, hibernateReplicaAnnotation, strconv.Itoa(int(replicas))),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(conf, context.Background(), patchRequest)
+		err = k8sUtils.PatchResource(context.Background(), conf, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = "replicas not found in manifest"
@@ -166,7 +166,7 @@ func Hibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIde
 	return resp, nil
 }
 
-func UnHibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
+func UnHibernate(ctx context.Context, clusterConfig *client.ClusterConfig, requests []*client.ObjectIdentifier) (*client.HibernateResponse, error) {
 	resp := &client.HibernateResponse{}
 
 	conf, err := k8sUtils.GetRestConfig(clusterConfig)
@@ -214,7 +214,7 @@ func UnHibernate(clusterConfig *client.ClusterConfig, requests []*client.ObjectI
 			Patch:                fmt.Sprintf(hibernatePatch, originalReplicaCount, hibernateReplicaAnnotation, "0"),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(conf, context.Background(), patchRequest)
+		err = k8sUtils.PatchResource(context.Background(), conf, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = err.Error()
@@ -320,7 +320,7 @@ func UninstallRelease(releaseIdentifier *client.ReleaseIdentifier) (*client.Unin
 	return uninstallReleaseResponse, nil
 }
 
-func UpgradeRelease(request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+func UpgradeRelease(ctx context.Context, request *client.UpgradeReleaseRequest) (*client.UpgradeReleaseResponse, error) {
 	releaseIdentifier := request.ReleaseIdentifier
 	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
 	if err != nil {
@@ -382,6 +382,129 @@ func GetDeploymentDetail(request *client.DeploymentDetailRequest) (*client.Deplo
 	}
 
 	return resp, nil
+}
+
+func InstallRelease(ctx context.Context, request *client.InstallReleaseRequest) (*client.InstallReleaseResponse, error) {
+	releaseIdentifier := request.ReleaseIdentifier
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClientObj, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add or update chart repo starts
+	chartRepoRequest := request.ChartRepository
+	chartRepoName := chartRepoRequest.Name
+	chartRepo := repo.Entry{
+		Name:     chartRepoName,
+		URL:      chartRepoRequest.Url,
+		Username: chartRepoRequest.Username,
+		Password: chartRepoRequest.Password,
+		// Since helm 3.6.1 it is necessary to pass 'PassCredentialsAll = true'.
+		PassCredentialsAll:    true,
+		InsecureSkipTLSverify: true,
+	}
+
+	err = helmClientObj.AddOrUpdateChartRepo(chartRepo)
+	if err != nil {
+		return nil, err
+	}
+	// Add or update chart repo ends
+
+	// Install release starts
+	chartSpec := &helmClient.ChartSpec{
+		ReleaseName:      releaseIdentifier.ReleaseName,
+		Namespace:        releaseIdentifier.ReleaseNamespace,
+		ValuesYaml:       request.ValuesYaml,
+		ChartName:        fmt.Sprintf("%s/%s", chartRepoName, request.ChartName),
+		Version:          request.ChartVersion,
+		DependencyUpdate: true,
+		UpgradeCRDs:      true,
+		CreateNamespace:  true,
+	}
+	_, err = helmClientObj.InstallChart(context.Background(), chartSpec)
+	if err != nil {
+		return nil, err
+	}
+	// Install release ends
+
+	installReleaseResponse := &client.InstallReleaseResponse{
+		Success: true,
+	}
+
+	return installReleaseResponse, nil
+
+}
+
+func UpgradeReleaseWithChartInfo(ctx context.Context, request *client.InstallReleaseRequest) (*client.UpgradeReleaseResponse, error) {
+	releaseIdentifier := request.ReleaseIdentifier
+	conf, err := k8sUtils.GetRestConfig(releaseIdentifier.ClusterConfig)
+	if err != nil {
+		return nil, err
+	}
+	opt := &helmClient.RestConfClientOptions{
+		Options: &helmClient.Options{
+			Namespace: releaseIdentifier.ReleaseNamespace,
+		},
+		RestConfig: conf,
+	}
+
+	helmClientObj, err := helmClient.NewClientFromRestConf(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add or update chart repo starts
+	chartRepoRequest := request.ChartRepository
+	chartRepoName := chartRepoRequest.Name
+	chartRepo := repo.Entry{
+		Name:     chartRepoName,
+		URL:      chartRepoRequest.Url,
+		Username: chartRepoRequest.Username,
+		Password: chartRepoRequest.Password,
+		// Since helm 3.6.1 it is necessary to pass 'PassCredentialsAll = true'.
+		PassCredentialsAll:    true,
+		InsecureSkipTLSverify: true,
+	}
+
+	err = helmClientObj.AddOrUpdateChartRepo(chartRepo)
+	if err != nil {
+		return nil, err
+	}
+	// Add or update chart repo ends
+
+	// Update release starts
+	chartSpec := &helmClient.ChartSpec{
+		ReleaseName:      releaseIdentifier.ReleaseName,
+		Namespace:        releaseIdentifier.ReleaseNamespace,
+		ValuesYaml:       request.ValuesYaml,
+		ChartName:        fmt.Sprintf("%s/%s", chartRepoName, request.ChartName),
+		Version:          request.ChartVersion,
+		DependencyUpdate: true,
+		UpgradeCRDs:      true,
+	}
+	_, err = helmClientObj.UpgradeReleaseWithChartInfo(context.Background(), chartSpec)
+	if err != nil {
+		return nil, err
+	}
+	// Update release ends
+
+	upgradeReleaseResponse := &client.UpgradeReleaseResponse{
+		Success: true,
+	}
+
+	return upgradeReleaseResponse, nil
+
 }
 
 func getHelmRelease(clusterConfig *client.ClusterConfig, namespace string, releaseName string) (*release.Release, error) {
