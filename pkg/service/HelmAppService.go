@@ -155,7 +155,7 @@ func Hibernate(ctx context.Context, clusterConfig *client.ClusterConfig, request
 			Patch:                fmt.Sprintf(hibernatePatch, 0, hibernateReplicaAnnotation, strconv.Itoa(int(replicas))),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(conf, ctx, patchRequest)
+		err = k8sUtils.PatchResource(ctx, conf, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = "replicas not found in manifest"
@@ -214,7 +214,7 @@ func UnHibernate(ctx context.Context, clusterConfig *client.ClusterConfig, reque
 			Patch:                fmt.Sprintf(hibernatePatch, originalReplicaCount, hibernateReplicaAnnotation, "0"),
 			PatchType:            string(types.JSONPatchType),
 		}
-		err = k8sUtils.PatchResource(conf, ctx, patchRequest)
+		err = k8sUtils.PatchResource(ctx, conf, patchRequest)
 		if err != nil {
 			status.Success = false
 			status.ErrorMsg = err.Error()
